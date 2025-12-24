@@ -11,12 +11,51 @@ interface User {
   role: 'admin' | 'user';
 }
 
+interface RegisteredUser {
+  username: string;
+  password: string;
+  workspaceId: string;
+}
+
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
   const { toast } = useToast();
+
+  const handleRegister = () => {
+    if (!username || !password) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Введите логин и пароль',
+      });
+      return;
+    }
+
+    if (registeredUsers.some((u) => u.username === username)) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Пользователь с таким логином уже существует',
+      });
+      return;
+    }
+
+    const workspaceId = `ws_${Date.now()}`;
+    const newUser: RegisteredUser = { username, password, workspaceId };
+    setRegisteredUsers([...registeredUsers, newUser]);
+    
+    setCurrentUser({ username, role: 'user' });
+    setIsAuthenticated(true);
+    toast({
+      title: 'Регистрация успешна',
+      description: `Добро пожаловать, ${username}! Ваше рабочее пространство создано`,
+    });
+  };
 
   const handleLogin = () => {
     if (username === 'admin' && password === 'qwerty12+') {
@@ -26,8 +65,12 @@ const Index = () => {
         title: 'Вход выполнен',
         description: 'Добро пожаловать, администратор!',
       });
-    } else if (username && password) {
-      setCurrentUser({ username, role: 'user' });
+      return;
+    }
+
+    const user = registeredUsers.find((u) => u.username === username && u.password === password);
+    if (user) {
+      setCurrentUser({ username: user.username, role: 'user' });
       setIsAuthenticated(true);
       toast({
         title: 'Вход выполнен',
@@ -37,7 +80,7 @@ const Index = () => {
       toast({
         variant: 'destructive',
         title: 'Ошибка',
-        description: 'Введите логин и пароль',
+        description: 'Неверный логин или пароль',
       });
     }
   };
@@ -58,7 +101,11 @@ const Index = () => {
               <Icon name="LayoutDashboard" size={32} className="text-primary" />
             </div>
             <CardTitle className="text-3xl font-bold">Управление проектами</CardTitle>
-            <CardDescription>Войдите для доступа к рабочим пространствам</CardDescription>
+            <CardDescription>
+              {isRegisterMode
+                ? 'Создайте аккаунт и получите свое рабочее пространство'
+                : 'Войдите для доступа к рабочим пространствам'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -81,21 +128,40 @@ const Index = () => {
                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               />
             </div>
-            <Button onClick={handleLogin} className="w-full" size="lg">
-              <Icon name="LogIn" size={18} className="mr-2" />
-              Войти
+            <Button onClick={isRegisterMode ? handleRegister : handleLogin} className="w-full" size="lg">
+              <Icon name={isRegisterMode ? 'UserPlus' : 'LogIn'} size={18} className="mr-2" />
+              {isRegisterMode ? 'Зарегистрироваться' : 'Войти'}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Суперадмин: admin / qwerty12+
-            </p>
+            <Button
+              variant="ghost"
+              onClick={() => setIsRegisterMode(!isRegisterMode)}
+              className="w-full"
+            >
+              {isRegisterMode ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
+            </Button>
+            {!isRegisterMode && (
+              <p className="text-xs text-center text-muted-foreground">
+                Суперадмин: admin / qwerty12+
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  const getUserWorkspaceId = () => {
+    if (currentUser?.role === 'admin') return null;
+    const user = registeredUsers.find((u) => u.username === currentUser?.username);
+    return user?.workspaceId || null;
+  };
+
   return (
-    <WorkspaceView user={currentUser!} onLogout={handleLogout} />
+    <WorkspaceView
+      user={currentUser!}
+      onLogout={handleLogout}
+      userWorkspaceId={getUserWorkspaceId()}
+    />
   );
 };
 

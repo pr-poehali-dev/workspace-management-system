@@ -33,24 +33,36 @@ interface Project {
 interface WorkspaceViewProps {
   user: User;
   onLogout: () => void;
+  userWorkspaceId: string | null;
 }
 
-const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
+const WorkspaceView = ({ user, onLogout, userWorkspaceId }: WorkspaceViewProps) => {
   const { toast } = useToast();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([
-    {
-      id: '1',
-      name: 'Основное пространство',
-      description: 'Главное рабочее пространство команды',
-      members: ['admin', 'user1', 'user2'],
-      tags: ['urgent', 'feature', 'bug'],
-      statuses: ['Бэклог', 'В работе', 'На проверке', 'Готово'],
-      projects: [
-        { id: '1', name: 'Веб-приложение', description: 'Разработка основного продукта' },
-        { id: '2', name: 'Мобильное приложение', description: 'iOS и Android версии' },
-      ],
-    },
-  ]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(
+    user.role === 'admin'
+      ? [
+          {
+            id: '1',
+            name: 'Основное пространство',
+            description: 'Главное рабочее пространство команды',
+            members: ['admin', 'user1', 'user2'],
+            tags: ['urgent', 'feature', 'bug'],
+            statuses: ['Бэклог', 'В работе', 'На проверке', 'Готово'],
+            projects: [
+              { id: '1', name: 'Веб-приложение', description: 'Разработка основного продукта' },
+              { id: '2', name: 'Мобильное приложение', description: 'iOS и Android версии' },
+            ],
+          },
+        ]
+      : []
+  );
+
+  const getVisibleWorkspaces = () => {
+    if (user.role === 'admin') return workspaces;
+    return workspaces.filter((ws) => ws.id === userWorkspaceId);
+  };
+
+  const visibleWorkspaces = getVisibleWorkspaces();
 
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -65,7 +77,7 @@ const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
     if (!newWorkspaceName) return;
     
     const newWorkspace: Workspace = {
-      id: Date.now().toString(),
+      id: userWorkspaceId || Date.now().toString(),
       name: newWorkspaceName,
       description: newWorkspaceDesc,
       members: [user.username],
@@ -113,6 +125,11 @@ const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
     });
   };
 
+  const handleWorkspaceUpdate = (updatedWorkspace: Workspace) => {
+    setWorkspaces(workspaces.map((ws) => (ws.id === updatedWorkspace.id ? updatedWorkspace : ws)));
+    setSelectedWorkspace(updatedWorkspace);
+  };
+
   if (selectedProject && selectedWorkspace) {
     return (
       <KanbanBoard
@@ -120,6 +137,7 @@ const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
         workspace={selectedWorkspace}
         user={user}
         onBack={() => setSelectedProject(null)}
+        onWorkspaceUpdate={handleWorkspaceUpdate}
       />
     );
   }
@@ -254,13 +272,14 @@ const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
       <main className="container mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Рабочие пространства</h2>
-          <Dialog open={isWorkspaceDialogOpen} onOpenChange={setIsWorkspaceDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Icon name="Plus" size={18} className="mr-2" />
-                Создать пространство
-              </Button>
-            </DialogTrigger>
+          {(user.role === 'admin' || visibleWorkspaces.length === 0) && (
+            <Dialog open={isWorkspaceDialogOpen} onOpenChange={setIsWorkspaceDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Icon name="Plus" size={18} className="mr-2" />
+                  Создать пространство
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Новое рабочее пространство</DialogTitle>
@@ -291,10 +310,11 @@ const WorkspaceView = ({ user, onLogout }: WorkspaceViewProps) => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {workspaces.map((workspace) => (
+          {visibleWorkspaces.map((workspace) => (
             <Card
               key={workspace.id}
               className="cursor-pointer hover:shadow-lg transition-all hover-scale"

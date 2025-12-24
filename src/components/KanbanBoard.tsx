@@ -47,9 +47,10 @@ interface KanbanBoardProps {
   workspace: Workspace;
   user: User;
   onBack: () => void;
+  onWorkspaceUpdate: (workspace: Workspace) => void;
 }
 
-const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => {
+const KanbanBoard = ({ project, workspace, user, onBack, onWorkspaceUpdate }: KanbanBoardProps) => {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([
     {
@@ -94,6 +95,9 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [taskFilter, setTaskFilter] = useState<'all' | 'active' | 'closed'>('all');
   const [newTagInput, setNewTagInput] = useState('');
+  const [statuses, setStatuses] = useState<string[]>(workspace.statuses);
+  const [editingStatus, setEditingStatus] = useState<string | null>(null);
+  const [editingStatusValue, setEditingStatusValue] = useState('');
 
   const handleCreateTask = () => {
     if (!newTaskTitle) return;
@@ -234,6 +238,63 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
 
   const filteredTasks = getFilteredTasks();
 
+  const handleStatusRename = (oldStatus: string, newStatus: string) => {
+    if (!newStatus.trim() || oldStatus === newStatus) {
+      setEditingStatus(null);
+      return;
+    }
+
+    const updatedStatuses = statuses.map((s) => (s === oldStatus ? newStatus : s));
+    setStatuses(updatedStatuses);
+    setTasks(tasks.map((task) => (task.status === oldStatus ? { ...task, status: newStatus } : task)));
+    onWorkspaceUpdate({ ...workspace, statuses: updatedStatuses });
+    setEditingStatus(null);
+    toast({
+      title: 'Колонка переименована',
+      description: `"${oldStatus}" → "${newStatus}"`,
+    });
+  };
+
+  const handleDeleteStatus = (status: string) => {
+    if (statuses.length <= 1) {
+      toast({
+        variant: 'destructive',
+        title: 'Ошибка',
+        description: 'Должна остаться хотя бы одна колонка',
+      });
+      return;
+    }
+
+    const tasksInStatus = tasks.filter((t) => t.status === status);
+    if (tasksInStatus.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Невозможно удалить',
+        description: 'Сначала переместите или удалите задачи из этой колонки',
+      });
+      return;
+    }
+
+    const updatedStatuses = statuses.filter((s) => s !== status);
+    setStatuses(updatedStatuses);
+    onWorkspaceUpdate({ ...workspace, statuses: updatedStatuses });
+    toast({
+      title: 'Колонка удалена',
+      description: `Колонка "${status}" удалена`,
+    });
+  };
+
+  const handleAddStatus = () => {
+    const newStatus = 'Новая колонка';
+    const updatedStatuses = [...statuses, newStatus];
+    setStatuses(updatedStatuses);
+    onWorkspaceUpdate({ ...workspace, statuses: updatedStatuses });
+    toast({
+      title: 'Колонка добавлена',
+      description: 'Кликните на название для редактирования',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
@@ -303,7 +364,7 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {workspace.statuses.map((status) => (
+                          {statuses.map((status) => (
                             <SelectItem key={status} value={status}>
                               {status}
                             </SelectItem>
@@ -331,19 +392,51 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
       </header>
 
       <main className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {workspace.statuses.map((status) => (
+        <div className="flex gap-6 overflow-x-auto pb-4">
+          {statuses.map((status) => (
             <div
               key={status}
-              className="flex flex-col gap-4"
+              className="flex flex-col gap-4 min-w-[280px] flex-shrink-0"
               onDragOver={handleDragOver}
               onDrop={() => handleDrop(status)}
             >
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg">{status}</h3>
-                <Badge variant="secondary">
-                  {filteredTasks.filter((t) => t.status === status).length}
-                </Badge>
+              <div className="flex items-center justify-between gap-2">
+                {editingStatus === status ? (
+                  <Input
+                    value={editingStatusValue}
+                    onChange={(e) => setEditingStatusValue(e.target.value)}
+                    onBlur={() => handleStatusRename(status, editingStatusValue)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleStatusRename(status, editingStatusValue);
+                      if (e.key === 'Escape') setEditingStatus(null);
+                    }}
+                    autoFocus
+                    className="h-8 font-semibold"
+                  />
+                ) : (
+                  <h3
+                    className="font-semibold text-lg cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => {
+                      setEditingStatus(status);
+                      setEditingStatusValue(status);
+                    }}
+                  >
+                    {status}
+                  </h3>
+                )}
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {filteredTasks.filter((t) => t.status === status).length}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={() => handleDeleteStatus(status)}
+                  >
+                    <Icon name="Trash2" size={16} />
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-3 min-h-[200px]">
@@ -409,6 +502,16 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
               </div>
             </div>
           ))}
+          <div className="min-w-[280px] flex-shrink-0">
+            <Button
+              variant="outline"
+              className="w-full h-full min-h-[100px] border-dashed"
+              onClick={handleAddStatus}
+            >
+              <Icon name="Plus" size={20} className="mr-2" />
+              Добавить колонку
+            </Button>
+          </div>
         </div>
       </main>
 
@@ -471,7 +574,7 @@ const KanbanBoard = ({ project, workspace, user, onBack }: KanbanBoardProps) => 
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {workspace.statuses.map((status) => (
+                        {statuses.map((status) => (
                           <SelectItem key={status} value={status}>
                             {status}
                           </SelectItem>
